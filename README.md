@@ -77,13 +77,13 @@ pnpm --dir <workspace>/deepseek-harness \
 pnpm --dir <workspace>/deepseek-harness dsh web
 ```
 
-日志出现以下内容表示 Telegram 已连接：
+插件连接成功后会向 Cordis logger 写入：
 
 ```text
 telegram-relay: connected as @<bot_username>
 ```
 
-然后给 Bot 发送文本。首次消息会创建 Session ID 为 `String(chat_id)` 的 DSH Agent；后续消息复用该 Session。DSH 重启后，插件从 Session persistence 恢复上下文。
+默认 Web 启动器不保证把 Cordis logger 打印到终端，最终以 Bot 能正常回复作为验收。首次消息会创建 Session ID 为 `String(chat_id)` 的 DSH Agent；后续消息复用该 Session。DSH 重启后，插件从 Session persistence 恢复上下文。
 
 ## 工作目录
 
@@ -130,7 +130,7 @@ pnpm run build
 
 依次检查：
 
-1. DSH 日志是否出现 `connected as`。
+1. Web 插件列表中的 `telegram-relay` 是否启用且没有加载错误。
 2. `TELEGRAM_ALLOWED_CHAT_IDS` 是否与 `message.chat.id` 完全一致。
 3. DSH Web 是否能正常调用模型。
 4. 是否有另一个进程消费了同一 Bot 的 Update。
