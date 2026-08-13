@@ -82,19 +82,21 @@ DSH-Telegram-Relay/
 │   ├── index.ts              # Cordis 插件入口和配置校验
 │   ├── telegram-client.ts    # getMe、getUpdates、sendMessage
 │   ├── polling-loop.ts       # 长轮询、offset 和重试
-│   ├── chat-queue.ts         # per-chat 串行队列
+│   ├── offset-store.ts       # offset 原子持久化
 │   ├── agent-manager.ts      # Agent 创建、恢复和缓存
 │   ├── turn-relay.ts         # 提交用户消息并提取本 turn 回答
-│   ├── reply.ts              # 文本提取和 Telegram 分片
+│   ├── reply.ts              # Telegram 分片与发送重试
+│   ├── bridge.ts             # allowlist 与 Update 路由
 │   └── config.ts             # Config 类型与 Schema
 ├── tests/
-│   ├── config.spec.ts
-│   ├── polling-loop.spec.ts
 │   ├── agent-manager.spec.ts
+│   ├── bridge.spec.ts
+│   ├── config.spec.ts
+│   ├── offset-store.spec.ts
+│   ├── polling-loop.spec.ts
+│   ├── reply.spec.ts
+│   ├── telegram-client.spec.ts
 │   └── turn-relay.spec.ts
-├── examples/
-│   └── telegram-bridge/
-│       └── cordis.patch.yml
 ├── cordis.patch.yml
 ├── package.json
 ├── tsconfig.json
@@ -111,6 +113,7 @@ DSH-Telegram-Relay/
 export const inject = [
   'agents',
   'agentDefaultModel',
+  'sessions',
   'sessionPersistence',
 ]
 ```
@@ -121,6 +124,7 @@ export const inject = [
 | --- | --- |
 | `agents` | 创建、恢复和驱动 DSH Agent |
 | `agentDefaultModel` | 读取当前默认模型选择 |
+| `sessions` | 在回复 Telegram 前 flush 当前 Session |
 | `sessionPersistence` | 判断指定 Session 是否已经存在 |
 
 所有长轮询、重试等待和资源释放都由 `ctx.effect()` 管理。插件卸载时 Abort 当前请求，停止接收新消息，并等待已经开始的消息处理结束。
@@ -136,6 +140,7 @@ export const inject = [
     tokenEnv: TELEGRAM_BOT_TOKEN
     allowedChatIds:
       - "123456789"
+    cwd: /absolute/project/path
     pollTimeoutSeconds: 30
     retryMinMilliseconds: 1000
     retryMaxMilliseconds: 30000
@@ -146,6 +151,7 @@ export const inject = [
 
 - `tokenEnv` 必填，值是环境变量名，不是 Bot Token。
 - `allowedChatIds` 必填、不能为空、不可重复。
+- `cwd` 必填且必须是绝对路径，决定 Telegram Session 的工具工作目录。
 - chat ID 按十进制字符串保存，避免 JavaScript 数值精度和 YAML 类型差异。
 - timeout 和 retry 范围在插件加载时校验。
 - `stateFile` 只保存 polling offset，不保存聊天内容和 Bot Token。
@@ -155,6 +161,7 @@ export const inject = [
 
 ```sh
 export TELEGRAM_BOT_TOKEN='<BotFather 返回的 token>'
+export TELEGRAM_ALLOWED_CHAT_IDS='<你的私聊 chat_id>'
 
 pnpm --dir <workspace>/deepseek-harness \
   dsh plugin --profile web add \
@@ -165,11 +172,11 @@ pnpm --dir <workspace>/deepseek-harness dsh web
 
 ## 7. 启动流程
 
-1. Cordis 等待三个依赖服务可用。
+1. Cordis 等待四个依赖服务可用。
 2. 插件校验配置和 `tokenEnv`。
 3. 使用 Bot Token 调用 `getMe`，确认凭证有效。
 4. 读取本地 polling offset。
-5. 创建 AbortController 和 per-chat 队列。
+5. 创建 AbortController 和 Agent handle 缓存。
 6. 启动 `getUpdates` 长轮询。
 7. 插件卸载时停止 polling，并释放 Agent 引用和队列。
 
@@ -184,7 +191,7 @@ Token 只存在于进程内存和 Telegram HTTPS 请求中。日志禁止打印�
 3. 只接受 `message.chat.type === 'private'`。
 4. 将 `String(message.chat.id)` 与 allowlist 精确匹配。
 5. 未授权消息不创建 Session、不调用模型、不回显任何系统信息。
-6. 授权消息进入该 chat 的串行队列。
+6. 授权消息进入全局串行 Update 处理链。
 7. 获取或恢复 Agent。
 8. 将 Telegram 文本作为普通用户消息提交给 Agent。
 9. 等待这个用户消息对应的 DSH turn 结束。
@@ -192,14 +199,14 @@ Token 只存在于进程内存和 Telegram HTTPS 请求中。日志禁止打印�
 11. 分片调用 `sendMessage` 回复原 chat。
 12. 成功后推进并持久化 polling offset。
 
-不同 chat 可以并行处理；同一 chat 必须串行，避免两个 turn 同时争用同一个 Session。
+P0 全局串行处理 Update。该策略直接保证同一 Session 不会并发执行 turn，也让 offset 的确认顺序与 Telegram `update_id` 保持一致。
 
 ## 9. Agent 创建与恢复
 
 进程内维护：
 
 ```ts
-Map<string, Promise<Agent>>
+Map<string, Promise<AgentHandle>>
 ```
 
 Map 的 key 是 `String(chat_id)`。Promise 缓存用于合并同一 chat 同时到达的首次初始化。
@@ -222,7 +229,7 @@ Session ID = String(Telegram chat_id)
 
 不能仅调用 `agent.whenIdle()` 后读取“最后一条消息”，因为 idle 只表示 Agent 当前没有工作，不能证明某条回答属于当前 Telegram 输入。
 
-每条 Telegram 消息创建唯一的 DSH 用户消息 ID。`turn-relay` 监听该 Session 的事件，并按以下关系定位结果：
+每条 Telegram 消息创建唯一的 DSH 用户消息 ID。Agent 回到 idle 后，`turn-relay` 从 Session 日志按以下关系定位结果：
 
 1. 找到携带该用户消息 ID 的 `user/message`。
 2. 确定包含该消息的 `turn/start`。
@@ -251,7 +258,7 @@ Telegram `sendMessage` 的 `text` 上限为 4096 个字符。回复模块按段�
 - 400 类永久错误不重试。
 - 429 按 Telegram `retry_after` 等待后重试。
 - 网络错误和 5xx 使用有上限的指数退避。
-- 达到重试上限后停止推进 polling，保留当前进程中的回答，不在同一进程内重复运行 DSH turn。
+- 退避时间增长到配置上限后保持该间隔继续重试；不在同一进程内重复运行 DSH turn。
 
 ## 12. Update 去重与交付语义
 
@@ -330,7 +337,7 @@ P0 提供至少一次处理，不承诺严格 exactly-once：
 
 - Telegram 文本被提交为 DSH 用户消息。
 - 只回传对应 turn 的最终 assistant 文本。
-- 同一 chat 的两条消息严格串行。
+- 所有 Update 按 `update_id` 严格串行。
 - 长回答按 Telegram 限制正确分片。
 - `sendMessage` 成功后才推进 offset。
 - Agent 或 Telegram 失败时不会错误确认 Update。
