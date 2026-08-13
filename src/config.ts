@@ -16,6 +16,8 @@ export interface Config {
   tokenEnv?: string
   /** 允许访问 DSH 的 Telegram 私聊 ID。 */
   allowedChatIds: string[]
+  /** Telegram 新建 DSH Session 时使用的绝对工作目录。 */
+  cwd: string
   /** `getUpdates` 单次长轮询的服务端等待秒数。 */
   pollTimeoutSeconds?: number
   /** 网络错误后的最短重试等待时间。 */
@@ -30,6 +32,7 @@ export interface Config {
 export const Config: z<Config> = z.object({
   tokenEnv: z.string().pattern(ENV_NAME_PATTERN).default('TELEGRAM_BOT_TOKEN'),
   allowedChatIds: z.array(z.string().pattern(PRIVATE_CHAT_ID_PATTERN)).min(1).required(),
+  cwd: z.string().min(1).required(),
   pollTimeoutSeconds: z.number().step(1).min(1).max(50).default(30),
   retryMinMilliseconds: z.number().step(1).min(100).max(60_000).default(1_000),
   retryMaxMilliseconds: z.number().step(1).min(100).max(300_000).default(30_000),
@@ -41,6 +44,7 @@ export interface ResolvedConfig {
   /** Telegram Bot Token，仅保存在进程内存中。 */
   readonly token: string
   readonly allowedChatIds: ReadonlySet<string>
+  readonly cwd: string
   readonly pollTimeoutSeconds: number
   readonly retryMinMilliseconds: number
   readonly retryMaxMilliseconds: number
@@ -91,10 +95,14 @@ export function resolveConfig(
   if (!path.isAbsolute(config.stateFile)) {
     throw new Error('telegram-relay: stateFile must be an absolute path')
   }
+  if (!path.isAbsolute(config.cwd)) {
+    throw new Error('telegram-relay: cwd must be an absolute path')
+  }
 
   return {
     token,
     allowedChatIds,
+    cwd: config.cwd,
     pollTimeoutSeconds,
     retryMinMilliseconds,
     retryMaxMilliseconds,

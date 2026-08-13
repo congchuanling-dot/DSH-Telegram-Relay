@@ -4,4 +4,5 @@
       config:
         tokenEnv: TELEGRAM_BOT_TOKEN
         allowedChatIds: !!js process.env.TELEGRAM_ALLOWED_CHAT_IDS?.split(',')
+        cwd: !!js process.cwd()
         stateFile: !!js dshHomePath('telegram-relay/state.json')
