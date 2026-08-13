@@ -14,7 +14,7 @@
       <img src="./docs/assets/telegram-conversation.jpg" alt="Telegram Bot 对话效果">
     </td>
     <td width="66%">
-      <img src="./docs/assets/dsh-web-session.jpg" alt="DeepSeek Harness Web 会话效果">
+      <img src="./docs/assets/dsh-web-session.png" alt="DeepSeek Harness Web 会话效果">
     </td>
   </tr>
   <tr>
