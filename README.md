@@ -8,9 +8,20 @@
 
 同一条对话由 DSH Session 持久化管理。Telegram 负责移动端收发，Web UI 可查看同一套 Agent 能力和执行过程。
 
-<p align="center">
-  <img src="./docs/assets/dsh-web-session.jpg" alt="DeepSeek Harness Web 会话效果" width="100%">
-</p>
+<table>
+  <tr>
+    <td width="34%">
+      <img src="./docs/assets/telegram-conversation.jpg" alt="Telegram Bot 对话效果">
+    </td>
+    <td width="66%">
+      <img src="./docs/assets/dsh-web-session.jpg" alt="DeepSeek Harness Web 会话效果">
+    </td>
+  </tr>
+  <tr>
+    <td align="center">Telegram 移动端</td>
+    <td align="center">DeepSeek Harness Web</td>
+  </tr>
+</table>
 
 ## 核心能力
 
