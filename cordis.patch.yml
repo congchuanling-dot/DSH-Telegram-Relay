@@ -1,0 +1,3 @@
+- insert:
+    - id: telegram-relay
+      name: dsh-telegram-relay
