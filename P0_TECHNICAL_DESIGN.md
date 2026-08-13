@@ -163,11 +163,13 @@ export const inject = [
 export TELEGRAM_BOT_TOKEN='<BotFather 返回的 token>'
 export TELEGRAM_ALLOWED_CHAT_IDS='<你的私聊 chat_id>'
 
-pnpm --dir <workspace>/deepseek-harness \
-  dsh plugin --profile web add \
-  <workspace>/DSH-Telegram-Relay
+cd DSH-Telegram-Relay
 
-pnpm --dir <workspace>/deepseek-harness dsh web
+pnpm --dir ../deepseek-harness \
+  dsh plugin --profile web add \
+  "$(pwd)"
+
+pnpm --dir ../deepseek-harness dsh web
 ```
 
 ## 7. 启动流程
