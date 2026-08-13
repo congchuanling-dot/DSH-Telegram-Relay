@@ -91,6 +91,17 @@ export TELEGRAM_ALLOWED_CHAT_IDS='<你的私聊 chat_id>'
 export TELEGRAM_ALLOWED_CHAT_IDS='123456789,987654321'
 ```
 
+`export` 只对当前终端会话及其启动的子进程生效。关闭终端或新开终端后，需要重新设置。Bot Token 通常保持不变，只有通过 BotFather 重新生成后才会变化；个人私聊 `chat_id` 通常也不会变化。
+
+为了避免每次启动前重复设置，可以写入 `deepseek-harness` 根目录的 `.env`：
+
+```dotenv
+TELEGRAM_BOT_TOKEN=<BotFather 返回的 Token>
+TELEGRAM_ALLOWED_CHAT_IDS=<你的私聊 chat_id>
+```
+
+`deepseek-harness/.gitignore` 已忽略 `.env`，但仍需确认不要将该文件或其中的 Token 提交到 Git。插件卸载后可以保留这些配置，重新安装插件时会继续使用。
+
 ### 3. 安装依赖并构建
 
 当前开发方式假设 `DSH-Telegram-Relay` 与 `deepseek-harness` 位于同一父目录：
