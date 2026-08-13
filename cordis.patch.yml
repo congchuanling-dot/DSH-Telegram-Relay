@@ -1,3 +1,7 @@
 - insert:
     - id: telegram-relay
       name: dsh-telegram-relay
+      config:
+        tokenEnv: TELEGRAM_BOT_TOKEN
+        allowedChatIds: !!js process.env.TELEGRAM_ALLOWED_CHAT_IDS?.split(',')
+        stateFile: !!js dshHomePath('telegram-relay/state.json')
